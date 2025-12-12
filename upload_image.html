@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Upload Photo - GPD Admin Portal</title>
+  <link rel="stylesheet" href="css_file/style.css" />
+  <style>
+    .back { color: #003366; text-decoration: none; font-weight: bold; margin-bottom: 20px; display: inline-block; }
+    h1 { text-align: center; color: #003366; }
+    .upload-box {
+      border: 4px dashed #003366;
+      border-radius: 20px;
+      padding: 60px;
+      text-align: center;
+      background: linear-gradient(135deg, #f8fbff, #e8f4ff);
+      cursor: pointer;
+      transition: 0.4s;
+    }
+    .upload-box:hover { background: #d0e8ff; }
+    .preview img { max-width: 300px; border-radius: 16px; margin: 20px 0; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
+    .form-group { margin: 25px 0; }
+    input[type=text] { width: 100%; padding: 14px; border: 2px solid #ddd; border-radius: 10px; font-size: 1.1rem; }
+    .btn-upload { background: linear-gradient(135deg, #003366, #0066cc); color: white; padding: 16px 50px; border: none; border-radius: 50px; font-size: 1.2rem; cursor: pointer; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <a href="admin.html" class="back">Back</a>
+  <h1>Upload Photo</h1>
+  <p style="text-align:center; color:#666;">Enter the <strong>exact name</strong> from the database</p>
+
+  <div id="dropArea" class="upload-box">
+    <h2>Drop Image Here</h2>
+    <p>or click to select • JPG, PNG, WebP</p>
+    <input type="file" id="imgInput" accept="image/*" hidden />
+  </div>
+
+  <div id="preview" style="text-align:center;"></div>
+
+  <div class="form-group">
+    <input type="text" id="name" placeholder="Full Name (Exact Match Required)" required />
+  </div>
+  <div class="form-group">
+    <input type="text" id="designation" placeholder="Designation (Optional)" />
+  </div>
+
+  <div style="text-align:center;">
+    <button onclick="uploadImage()" class="btn-upload">Upload & Link Photo</button>
+  </div>
+
+  <div id="msg" style="margin-top:25px; text-align:center; font-size:1.2rem; font-weight:bold;"></div>
+</div>
+
+<script>
+  const dropArea = document.getElementById('dropArea');
+  const imgInput = document.getElementById('imgInput');
+  const preview = document.getElementById('preview');
+  let file;
+
+  dropArea.onclick = () => imgInput.click();
+  imgInput.onchange = e => { if (e.target.files[0]) handleFile(e.target.files[0]); };
+  dropArea.ondrop = e => { e.preventDefault(); dropArea.classList.remove('dragover'); handleFile(e.dataTransfer.files[0]); };
+  dropArea.ondragover = e => { e.preventDefault(); dropArea.classList.add('dragover'); };
+  dropArea.ondragleave = () => dropArea.classList.remove('dragover');
+
+  function handleFile(f) {
+    if (!f.type.startsWith('image/')) return alert("Please select an image");
+    file = f;
+    const reader = new FileReader();
+    reader.onload = e => preview.innerHTML = `<img src="${e.target.result}" alt="Preview" />`;
+    reader.readAsDataURL(f);
+  }
+
+  async function uploadImage() {
+    if (!file) return alert("Select an image");
+    const name = document.getElementById('name').value.trim();
+    if (!name) return alert("Name is required");
+
+    const form = new FormData();
+    form.append('image', file);
+    form.append('name', name);
+    form.append('designation', document.getElementById('designation').value);
+
+    const res = await fetch('/api/upload-image', { method: 'POST', body: form });
+    const data = await res.json();
+    document.getElementById('msg').innerHTML = data.success
+      ? `<span style="color:green;">Success! Photo linked to ${name}</span>`
+      : `<span style="color:red;">Error: ${data.error}</span>`;
+  }
+</script>
+</body>
+</html>

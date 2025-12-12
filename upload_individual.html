@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Add Record - GPD Admin Portal</title>
+  <link rel="stylesheet" href="css_file/style.css" />
+  <style>
+    .back { color: #003366; text-decoration: none; font-weight: bold; margin-bottom: 20px; display: inline-block; }
+    h1 { text-align: center; color: #003366; }
+    .form-grid { display: grid; gap: 20px; max-width: 600px; margin: 0 auto; }
+    label { font-weight: bold; color: #003366; }
+    input, select { width: 100%; padding: 12px; border: 2px solid #ddd; border-radius: 8px; font-size: 1rem; }
+    input:focus, select:focus { border-color: #003366; outline: none; }
+    .btn-group { text-align: center; margin-top: 30px; }
+    .btn { padding: 14px 40px; background: #003366; color: white; border: none; border-radius: 50px; cursor: pointer; font-size: 1.1rem; }
+    .btn:hover { background: #0066cc; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <a href="admin.html" class="back">Back</a>
+  <h1>Add Individual Record</h1>
+  <div class="form-grid">
+    <div>
+      <label>Category</label>
+      <select id="type" required>
+        <option value="">Select Category</option>
+        <option value="regional">Regional/Zonal Secretary</option>
+        <option value="group_regional">Group Regional/RZM</option>
+      </select>
+    </div>
+    <div id="regionalFields" style="display:none;">
+      <label>Region</label><input type="text" id="region">
+      <label>Designation</label><input type="text" id="designation">
+      <label>Name</label><input type="text" id="name" required>
+      <label>KC ID</label><input type="text" id="kc_id">
+      <label>BLW Zone</label><input type="text" id="blw_zone">
+    </div>
+  </div>
+
+  <div class="btn-group">
+    <button onclick="addRecord()" class="btn">Add Record</button>
+  </div>
+  <div id="msg" style="margin-top:20px; text-align:center; font-weight:bold;"></div>
+</div>
+
+<script>
+  document.getElementById('type').onchange = function() {
+    document.getElementById('regionalFields').style.display = this.value === 'regional' ? 'block' : 'none';
+  };
+
+  async function addRecord() {
+    const type = document.getElementById('type').value;
+    if (!type) return alert("Select category");
+    const payload = { type };
+    if (type === 'regional') {
+      payload.region = document.getElementById('region').value.trim();
+      payload.designation = document.getElementById('designation').value.trim();
+      payload.name = document.getElementById('name').value.trim();
+      payload.kc_id = document.getElementById('kc_id').value.trim();
+      payload.blw_zone = document.getElementById('blw_zone').value.trim();
+      if (!payload.name) return alert("Name is required");
+    }
+
+    const res = await fetch('/api/add-record', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    document.getElementById('msg').innerHTML = data.success
+      ? `<span style="color:green;">Success! Record added.</span>`
+      : `<span style="color:red;">Error: ${data.error}</span>`;
+  }
+</script>
+</body>
+</html>
