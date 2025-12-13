@@ -23,19 +23,13 @@
   <h1>Add Individual Record</h1>
   <div class="form-grid">
     <div>
-      <label>Category</label>
-      <select id="type" required>
-        <option value="">Select Category</option>
-        <option value="regional">Regional/Zonal Secretary</option>
-        <option value="group_regional">Group Regional/RZM</option>
-      </select>
-    </div>
-    <div id="regionalFields" style="display:none;">
       <label>Region</label><input type="text" id="region">
       <label>Designation</label><input type="text" id="designation">
       <label>Name</label><input type="text" id="name" required>
       <label>KC ID</label><input type="text" id="kc_id">
       <label>BLW Zone</label><input type="text" id="blw_zone">
+      <label>Group Name</label><input type="text" id="group_name">
+      <label>Chapter</label><input type="text" id="chapter">
     </div>
   </div>
 
@@ -46,22 +40,17 @@
 </div>
 
 <script>
-  document.getElementById('type').onchange = function() {
-    document.getElementById('regionalFields').style.display = this.value === 'regional' ? 'block' : 'none';
-  };
-
   async function addRecord() {
-    const type = document.getElementById('type').value;
-    if (!type) return alert("Select category");
-    const payload = { type };
-    if (type === 'regional') {
-      payload.region = document.getElementById('region').value.trim();
-      payload.designation = document.getElementById('designation').value.trim();
-      payload.name = document.getElementById('name').value.trim();
-      payload.kc_id = document.getElementById('kc_id').value.trim();
-      payload.blw_zone = document.getElementById('blw_zone').value.trim();
-      if (!payload.name) return alert("Name is required");
-    }
+    const payload = {
+      region: document.getElementById('region').value.trim(),
+      designation: document.getElementById('designation').value.trim(),
+      name: document.getElementById('name').value.trim(),
+      kc_id: document.getElementById('kc_id').value.trim(),
+      blw_zone: document.getElementById('blw_zone').value.trim(),
+      group_name: document.getElementById('group_name').value.trim(),
+      chapter: document.getElementById('chapter').value.trim()
+    };
+    if (!payload.name) return alert("Name is required");
 
     const res = await fetch('/api/add-record', {
       method: 'POST',

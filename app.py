@@ -1,7 +1,7 @@
 # app.py
 import os
 import sqlite3
-from flask import Flask, request, jsonify, send_from_directory, session, redirect, flash
+from flask import Flask, request, jsonify, send_from_directory, session, redirect, url_for
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -9,11 +9,11 @@ from datetime import datetime
 from functools import wraps
 from db_converter import DatabaseConverter
 
-app = Flask(__name__, static_folder=os.path.dirname(__file__))
+app = Flask(__name__)
 CORS(app)
-app.secret_key = 'gpd_super_secure_key_2025'
+app.secret_key = 'gpd_super_secure_key_2025_change_this_later'
 
-# Folders
+# === PATHS ===
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
 DATABASE_FOLDER = os.path.join(BASE_DIR, 'database')
@@ -32,10 +32,67 @@ def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         if 'logged_in' not in session:
-            return redirect('/login')
+            return redirect(url_for('login', next=request.url))
         return f(*args, **kwargs)
     return decorated
 
+
+# =============== PUBLIC ROUTES ===============
+@app.route('/')
+def index():
+    return send_from_directory(PUBLIC_FOLDER, 'index.html')
+
+@app.route('/public/<path:filename>')
+def public_files(filename):
+    return send_from_directory(PUBLIC_FOLDER, filename)
+
+@app.route('/images/<filename>')
+def uploaded_image(filename):
+    return send_from_directory(IMAGES_FOLDER, filename)
+
+
+# =============== SEARCH API (PUBLIC) - NOW INCLUDES KC_ID ===============
+@app.route('/api/search')
+def search():
+    query = request.args.get('q', '').strip().lower()
+    if not query:
+        return jsonify([])
+
+    results = []
+    conn = sqlite3.connect(DATABASE_PATH)
+    cur = conn.cursor()
+
+    cur.execute(f"""
+        SELECT name, designation, blw_zone, image_path, region, chapter, group_name, kc_id
+        FROM gpd_records
+        WHERE LOWER(name) LIKE ? 
+           OR LOWER(designation) LIKE ? 
+           OR LOWER(blw_zone) LIKE ?
+           OR LOWER(kc_id) LIKE ?
+        ORDER BY name
+    """, (f'%{query}%', f'%{query}%', f'%{query}%', f'%{query}%'))
+    
+    for row in cur.fetchall():
+        results.append({
+            'name': row[0],
+            'designation': row[1] or '',
+            'blw_zone': row[2] or '',
+            'photo': row[3] if row[3] else '/public/default-photo.jpg',
+            'region': row[4] or '',
+            'chapter': row[5] or '',
+            'group': row[6] or '',
+            'kc_id': row[7] or ''  # ← KC ID now included and searchable
+        })
+
+    conn.close()
+    return jsonify(results)
+
+
+# =============== ADMIN ROUTES ===============
+@app.route('/admin')
+@login_required
+def admin():
+    return send_from_directory(BASE_DIR, 'admin.html')
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -50,84 +107,26 @@ def login():
 
         if user and check_password_hash(user[1], password):
             session['logged_in'] = True
-            return redirect('/')
+            return redirect(request.args.get('next') or '/admin')
         else:
-            # Show clean error without template rendering
-            error = '<div style="color:red; text-align:center; margin:20px; font-weight:bold; font-size:1.1rem;">Invalid username or password</div>'
+            error = '<div style="color:red;text-align:center;margin:20px;font-weight:bold;">Invalid username or password</div>'
             html = open(os.path.join(BASE_DIR, 'login.html'), 'r', encoding='utf-8').read()
             return html.replace('</body>', error + '</body>')
 
-    # Serve login.html as raw static file — NO Jinja2 processing!
-    return app.send_static_file('login.html')
-
+    return send_from_directory(BASE_DIR, 'login.html')
 
 @app.route('/logout')
 def logout():
     session.clear()
     return redirect('/login')
 
-
-@app.route('/')
-@login_required
-def home():
-    return send_from_directory(BASE_DIR, 'admin.html')
-
-
 @app.route('/<path:filename>')
 @login_required
-def serve_static(filename):
+def admin_files(filename):
     return send_from_directory(BASE_DIR, filename)
 
 
-# PUBLIC ROUTES (No login)
-@app.route('/public')
-def public_home():
-    return send_from_directory(PUBLIC_FOLDER, 'index.html')
-
-
-@app.route('/public/<path:filename>')
-def serve_public(filename):
-    return send_from_directory(PUBLIC_FOLDER, filename)
-
-
-@app.route('/images/<filename>')  # Public images
-def serve_image(filename):
-    return send_from_directory(IMAGES_FOLDER, filename)
-
-
-@app.route('/api/search')  # Public search API
-def search():
-    query = request.args.get('q', '').strip().lower()
-    if not query:
-        return jsonify([])
-
-    results = []
-    tables = ['regional_pastors', 'zonal_pastors', 'group_pastors', 'chapter_pastors', 'rzm_pastors']
-    conn = sqlite3.connect(DATABASE_PATH)
-    cur = conn.cursor()
-
-    for table in tables:
-        cur.execute(f"""
-            SELECT name, designation, blw_zone, image_path, region, chapter, group_name
-            FROM {table}
-            WHERE LOWER(name) LIKE ? OR LOWER(designation) LIKE ? OR LOWER(blw_zone) LIKE ?
-            ORDER BY name
-        """, (f'%{query}%', f'%{query}%', f'%{query}%'))
-        for row in cur.fetchall():
-            results.append({
-                'name': row[0],
-                'designation': row[1],
-                'blw_zone': row[2],
-                'photo': row[3] or '/public/default-photo.jpg',  # Fallback if no photo
-                'region': row[4],
-                'chapter': row[5],
-                'group': row[6]
-            })
-
-    conn.close()
-    return jsonify(results)
-
-
+# =============== ADMIN APIs ===============
 @app.route('/api/upload-image', methods=['POST'])
 @login_required
 def upload_image():
@@ -151,19 +150,16 @@ def upload_image():
 
         image_url = f"/images/{filename}"
 
-        tables = ['regional_pastors', 'zonal_pastors', 'group_pastors', 'chapter_pastors', 'rzm_pastors']
         conn = sqlite3.connect(DATABASE_PATH)
         cur = conn.cursor()
-        affected = 0
-        for table in tables:
-            cur.execute(f"UPDATE {table} SET image_path = ? WHERE TRIM(LOWER(name)) = TRIM(LOWER(?))", (image_url, name))
-            affected += cur.rowcount
+        cur.execute("UPDATE gpd_records SET image_path = ? WHERE TRIM(LOWER(name)) = TRIM(LOWER(?))", (image_url, name))
+        affected = cur.rowcount
         conn.commit()
         conn.close()
 
         if affected == 0:
             os.remove(filepath)
-            return jsonify({'success': False, 'error': f'No pastor found: "{name}"'}), 404
+            return jsonify({'success': False, 'error': f'No record found: "{name}"'}), 404
 
         return jsonify({'success': True, 'message': 'Photo linked!', 'image_path': image_url})
     except Exception as e:
@@ -206,25 +202,31 @@ def add_record():
         conn = sqlite3.connect(DATABASE_PATH)
         cur = conn.cursor()
         cur.execute('''
-            INSERT INTO regional_pastors (region, designation, name, kc_id, blw_zone)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO gpd_records (region, designation, name, kc_id, blw_zone, group_name, chapter)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         ''', (
             data.get('region', ''),
             data.get('designation', ''),
             name,
             data.get('kc_id', ''),
-            data.get('blw_zone', '')
+            data.get('blw_zone', ''),
+            data.get('group_name', ''),
+            data.get('chapter', '')
         ))
         conn.commit()
         conn.close()
         return jsonify({'success': True, 'message': 'Record added'})
     except sqlite3.IntegrityError:
         return jsonify({'success': False, 'error': 'Name already exists'}), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 if __name__ == '__main__':
     db.init_db()
     db.add_image_path_column_if_missing()
-    print("GPD Portal Running • Login: http://127.0.0.1:5000/login")
-    print("Public: http://127.0.0.1:5000/public")
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    print("GPD PORTAL RUNNING")
+    print("Public: http://127.0.0.1:5000/")
+    print("Admin: http://127.0.0.1:5000/admin")
+    print("Default login: super / superuser")
+    app.run(debug=True, port=5000)

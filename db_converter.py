@@ -24,17 +24,13 @@ class DatabaseConverter:
             name TEXT UNIQUE NOT NULL,
             kc_id TEXT,
             blw_zone TEXT,
-            chapter TEXT,
             group_name TEXT,
+            chapter TEXT,
             image_path TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         '''
 
-        cur.execute(f"CREATE TABLE IF NOT EXISTS regional_pastors ({fields})")
-        cur.execute(f"CREATE TABLE IF NOT EXISTS zonal_pastors ({fields})")
-        cur.execute(f"CREATE TABLE IF NOT EXISTS group_pastors ({fields})")
-        cur.execute(f"CREATE TABLE IF NOT EXISTS chapter_pastors ({fields})")
-        cur.execute(f"CREATE TABLE IF NOT EXISTS rzm_pastors ({fields})")
+        cur.execute(f"CREATE TABLE IF NOT EXISTS gpd_records ({fields})")
 
         cur.execute('''
             CREATE TABLE IF NOT EXISTS users (
@@ -56,12 +52,10 @@ class DatabaseConverter:
     def add_image_path_column_if_missing(self):
         conn = sqlite3.connect(self.database_path)
         cur = conn.cursor()
-        tables = ['regional_pastors', 'zonal_pastors', 'group_pastors', 'chapter_pastors', 'rzm_pastors']
-        for table in tables:
-            cur.execute(f"PRAGMA table_info({table})")
-            columns = [row[1] for row in cur.fetchall()]
-            if 'image_path' not in columns:
-                cur.execute(f"ALTER TABLE {table} ADD COLUMN image_path TEXT")
+        cur.execute("PRAGMA table_info(gpd_records)")
+        columns = [row[1] for row in cur.fetchall()]
+        if 'image_path' not in columns:
+            cur.execute("ALTER TABLE gpd_records ADD COLUMN image_path TEXT")
         conn.commit()
         conn.close()
 
@@ -77,8 +71,8 @@ class DatabaseConverter:
             'name': ['name', 'full name', 'person'],
             'kc_id': ['kc id', 'kingschat number', 'kcid'],
             'blw_zone': ['zone', 'blw zone'],
-            'chapter': ['chapter'],
-            'group_name': ['group', 'group name']
+            'group_name': ['group', 'group name', 'groups'],
+            'chapter': ['chapter']
         }
         result = pd.DataFrame()
         for target, sources in mapping.items():
@@ -98,46 +92,32 @@ class DatabaseConverter:
             cur = conn.cursor()
             total = 0
 
-            # AUTO SORT BY SHEET NAME
             for sheet_name, df in df_dict.items():
                 df = df.dropna(how='all').fillna('')
                 df_mapped = self.map_columns(df)
-
-                table = 'regional_pastors'  # default
-                s = sheet_name.lower()
-                if any(x in s for x in ['regional', 'region', 'nigeria', 'west', 'south', 'east', 'europe', 'usa', 'canada', 'mid-east']):
-                    table = 'regional_pastors'
-                elif any(x in s for x in ['zonal', 'zone']):
-                    table = 'zonal_pastors'
-                elif any(x in s for x in ['group']):
-                    table = 'group_pastors'
-                elif any(x in s for x in ['chapter']):
-                    table = 'chapter_pastors'
-                elif any(x in s for x in ['rzm', 'dsp', 'special']):
-                    table = 'rzm_pastors'
 
                 inserted = 0
                 for _, row in df_mapped.iterrows():
                     name = row['name']
                     if not name: continue
                     try:
-                        cur.execute(f'''
-                            INSERT INTO {table} 
-                            (region, designation, name, kc_id, blw_zone, chapter, group_name)
+                        cur.execute('''
+                            INSERT INTO gpd_records 
+                            (region, designation, name, kc_id, blw_zone, group_name, chapter)
                             VALUES (?, ?, ?, ?, ?, ?, ?)
                         ''', (
                             row['region'], row['designation'], name,
-                            row['kc_id'], row['blw_zone'], row['chapter'], row['group_name']
+                            row['kc_id'], row['blw_zone'], row['group_name'], row['chapter']
                         ))
                         inserted += 1
                         total += 1
                     except sqlite3.IntegrityError:
                         pass  # duplicate skipped
 
-                print(f"Sheet '{sheet_name}' → {table}: {inserted} records")
+                print(f"Sheet '{sheet_name}' → gpd_records: {inserted} records")
 
             conn.commit()
             conn.close()
-            return {'success': True, 'records_inserted': total, 'message': f"{total} records added automatically"}
+            return {'success': True, 'records_inserted': total, 'message': f"{total} records added"}
         except Exception as e:
             return {'success': False, 'error': str(e)}
